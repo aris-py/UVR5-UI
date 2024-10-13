@@ -16,7 +16,6 @@ import assets.themes.loadThemes as loadThemes
 
 i18n = I18nAuto()
 
-# Model Definitions
 ROFORMER_MODELS = {
     'BS-Roformer-Viperx-1297.ckpt': 'model_bs_roformer_ep_317_sdr_12.9755.ckpt',
     'BS-Roformer-Viperx-1296.ckpt': 'model_bs_roformer_ep_368_sdr_12.9628.ckpt',
@@ -117,15 +116,12 @@ MDXNET_OVERLAPS = ['0.25', '0.5', '0.75', '0.99']
 VRARCH_WINDOW_SIZES = ['320', '512', '1024']
 DEMUCUS_OVERLAPS = ['0.25', '0.50', '0.75', '0.99']
 
-# Common Constants
 OUTPUT_DIR = "./outputs"
 AUDIO_EXTENSIONS = (".mp3", ".wav", ".flac")
 NORMALIZATION = "0.9"
 
-# Ensure output directory exists
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Thread pool for batch processing
 executor = ThreadPoolExecutor(max_workers=os.cpu_count())
 
 def generate_unique_id():
@@ -252,7 +248,6 @@ def batch_separator(input_path, output_path, model, output_format, overlap, segm
             f"--normalization={NORMALIZATION}"
         ]
 
-        # Add additional parameters based on model type
         if "--mdxc_overlap" in model:
             cmd.append(f"--mdxc_overlap={overlap}")
             cmd.append(f"--mdxc_segment_size={segment_size}")
@@ -265,8 +260,7 @@ def batch_separator(input_path, output_path, model, output_format, overlap, segm
                 cmd.append("--vr_enable_tta")
             if high_end_process:
                 cmd.append("--vr_high_end_process")
-        # Add other model-specific parameters as needed
-
+        
         logs.append(f"Processing file: {audio_file}")
         try:
             subprocess.run(cmd, check=True)
@@ -295,7 +289,6 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
     gr.Markdown("Try UVR5 UI on Hugging Face with A100 [here](https://huggingface.co/spaces/TheStinger/UVR5_UI)")
     
     with gr.Tabs():
-        # BS/Mel Roformer Tab
         with gr.TabItem("BS/Mel Roformer"):
             with gr.Row():
                 roformer_model = gr.Dropdown(
@@ -412,7 +405,6 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                 outputs=[roformer_stem1, roformer_stem2]
             )
         
-        # MDX-NET Tab
         with gr.TabItem("MDX-NET"):
             with gr.Row():
                 mdxnet_model = gr.Dropdown(
@@ -534,7 +526,6 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                 outputs=[mdxnet_stem1, mdxnet_stem2]
             )
         
-        # VR ARCH Tab
         with gr.TabItem("VR ARCH"):
             with gr.Row():
                 vrarch_model = gr.Dropdown(
@@ -664,7 +655,6 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                 outputs=[vrarch_stem1, vrarch_stem2]
             )
         
-        # Demucs Tab
         with gr.TabItem("Demucs"):
             with gr.Row():
                 demucs_model = gr.Dropdown(
@@ -791,11 +781,9 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                 outputs=[demucs_stem1, demucs_stem2, demucs_stem3, demucs_stem4]
             )
         
-        # Themes Tab
         with gr.TabItem("Themes"):
             select_themes()
         
-        # Credits Tab
         with gr.TabItem("Credits"):
             gr.Markdown(
                 """

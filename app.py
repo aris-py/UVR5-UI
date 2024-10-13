@@ -9,6 +9,7 @@ import numpy as np
 import gradio as gr
 import yt_dlp
 from scipy.io.wavfile import write, read
+from slugify import slugify  
 
 from tabs.settings import select_themes_tab
 from assets.i18n.i18n import I18nAuto
@@ -117,20 +118,30 @@ VRARCH_WINDOW_SIZES = ['320', '512', '1024']
 DEMUCUS_OVERLAPS = ['0.25', '0.50', '0.75', '0.99']
 
 OUTPUT_DIR = "./outputs"
+YTDL_DIR = "./ytdl"
 AUDIO_EXTENSIONS = (".mp3", ".wav", ".flac")
 NORMALIZATION = "0.9"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(YTDL_DIR, exist_ok=True)
 
 executor = ThreadPoolExecutor(max_workers=os.cpu_count())
 
 def generate_unique_id():
-    return uuid.uuid4().hex[:5]
+    return uuid.uuid4().hex[:8]
+
+def sanitize_filename(filename):
+    """
+    Sanitize the filename by removing non-Latin characters and replacing spaces with underscores.
+    Only keep alphanumeric characters and underscores.
+    """
+    safe_name = slugify(filename, lowercase=True)
+    return safe_name
 
 def download_audio(url):
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': os.path.join("ytdl", '%(title)s.%(ext)s'),
+        'outtmpl': os.path.join(YTDL_DIR, '%(id)s.%(ext)s'),  
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'wav',
@@ -141,8 +152,19 @@ def download_audio(url):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict).rsplit('.', 1)[0] + '.wav'
-            sample_rate, audio_data = read(file_path)
+            original_file_path = ydl.prepare_filename(info_dict).rsplit('.', 1)[0] + '.wav'
+            
+            title = info_dict.get('title', 'downloaded_audio')
+            desired_part = title.split('/')[-1].strip()
+            safe_desired_part = sanitize_filename(desired_part)
+            if not safe_desired_part:
+                safe_desired_part = generate_unique_id()
+            new_file_name = f"{safe_desired_part}.wav"
+            new_file_path = os.path.join(YTDL_DIR, new_file_name)
+            
+            os.rename(original_file_path, new_file_path)
+            
+            sample_rate, audio_data = read(new_file_path)
             return sample_rate, np.asarray(audio_data, dtype=np.int16)
         except Exception as e:
             print(f"Error downloading audio: {e}")
@@ -150,7 +172,8 @@ def download_audio(url):
 
 def run_separator(audio, model, output_format, additional_params):
     unique_id = generate_unique_id()
-    input_path = os.path.join(OUTPUT_DIR, f'{unique_id}.wav')
+    safe_filename = f"{unique_id}.wav"
+    input_path = os.path.join(OUTPUT_DIR, safe_filename)
     write(input_path, audio[0], audio[1])
 
     cmd = [
@@ -260,7 +283,7 @@ def batch_separator(input_path, output_path, model, output_format, overlap, segm
                 cmd.append("--vr_enable_tta")
             if high_end_process:
                 cmd.append("--vr_high_end_process")
-        
+
         logs.append(f"Processing file: {audio_file}")
         try:
             subprocess.run(cmd, check=True)

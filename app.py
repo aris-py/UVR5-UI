@@ -16,7 +16,7 @@ import assets.themes.loadThemes as loadThemes
 
 i18n = I18nAuto()
 
-
+# Model Definitions
 ROFORMER_MODELS = {
     'BS-Roformer-Viperx-1297.ckpt': 'model_bs_roformer_ep_317_sdr_12.9755.ckpt',
     'BS-Roformer-Viperx-1296.ckpt': 'model_bs_roformer_ep_368_sdr_12.9628.ckpt',
@@ -117,12 +117,15 @@ MDXNET_OVERLAPS = ['0.25', '0.5', '0.75', '0.99']
 VRARCH_WINDOW_SIZES = ['320', '512', '1024']
 DEMUCUS_OVERLAPS = ['0.25', '0.50', '0.75', '0.99']
 
+# Common Constants
 OUTPUT_DIR = "./outputs"
 AUDIO_EXTENSIONS = (".mp3", ".wav", ".flac")
 NORMALIZATION = "0.9"
 
+# Ensure output directory exists
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# Thread pool for batch processing
 executor = ThreadPoolExecutor(max_workers=os.cpu_count())
 
 def generate_unique_id():
@@ -140,10 +143,14 @@ def download_audio(url):
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info_dict = ydl.extract_info(url, download=True)
-        file_path = ydl.prepare_filename(info_dict).rsplit('.', 1)[0] + '.wav'
-        sample_rate, audio_data = read(file_path)
-        return sample_rate, np.asarray(audio_data, dtype=np.int16)
+        try:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict).rsplit('.', 1)[0] + '.wav'
+            sample_rate, audio_data = read(file_path)
+            return sample_rate, np.asarray(audio_data, dtype=np.int16)
+        except Exception as e:
+            print(f"Error downloading audio: {e}")
+            return None, None
 
 def run_separator(audio, model, output_format, additional_params):
     unique_id = generate_unique_id()
@@ -159,7 +166,11 @@ def run_separator(audio, model, output_format, additional_params):
         f"--normalization={NORMALIZATION}"
     ] + additional_params
 
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error processing {input_path}: {e}")
+        return [f"Error processing {input_path}: {str(e)}"]
 
     pattern = re.compile(unique_id)
     stem_files = sorted([
@@ -168,13 +179,15 @@ def run_separator(audio, model, output_format, additional_params):
     return stem_files
 
 def roformer_separator(audio, model_key, output_format, overlap, segment_size):
-    model = ROFORMER_MODELS[model_key]
+    model = ROFORMER_MODELS.get(model_key)
+    if not model:
+        return ["Invalid Roformer model selected."]
     additional_params = [
         f"--mdxc_overlap={overlap}",
         f"--mdxc_segment_size={segment_size}"
     ]
     stems = run_separator(audio, model, output_format, additional_params)
-    return stems[:2]
+    return stems[:2] if len(stems) >=2 else stems
 
 def mdxc_separator(audio, model, output_format, segment_size, overlap, denoise):
     additional_params = [
@@ -184,7 +197,7 @@ def mdxc_separator(audio, model, output_format, segment_size, overlap, denoise):
     if denoise:
         additional_params.append("--mdx_enable_denoise")
     stems = run_separator(audio, model, output_format, additional_params)
-    return stems[:2]
+    return stems[:2] if len(stems) >=2 else stems
 
 def mdxnet_separator(audio, model, output_format, segment_size, overlap, denoise):
     additional_params = [
@@ -194,7 +207,7 @@ def mdxnet_separator(audio, model, output_format, segment_size, overlap, denoise
     if denoise:
         additional_params.append("--mdx_enable_denoise")
     stems = run_separator(audio, model, output_format, additional_params)
-    return stems[:2]
+    return stems[:2] if len(stems) >=2 else stems
 
 def vrarch_separator(audio, model, output_format, window_size, aggression, tta, high_end_process):
     additional_params = [
@@ -206,7 +219,7 @@ def vrarch_separator(audio, model, output_format, window_size, aggression, tta, 
     if high_end_process:
         additional_params.append("--vr_high_end_process")
     stems = run_separator(audio, model, output_format, additional_params)
-    return stems[:2]
+    return stems[:2] if len(stems) >=2 else stems
 
 def demucs_separator(audio, model, output_format, shifts, overlap):
     additional_params = [
@@ -214,9 +227,9 @@ def demucs_separator(audio, model, output_format, shifts, overlap):
         f"--demucs_overlap={overlap}"
     ]
     stems = run_separator(audio, model, output_format, additional_params)
-    return tuple(stems[:4])
+    return tuple(stems[:4]) if len(stems) >=4 else tuple(stems)
 
-def batch_separator(input_path, output_path, model, output_format, *params):
+def batch_separator(input_path, output_path, model, output_format, overlap, segment_size, denoise=None, window_size=None, aggression=None, tta=None, high_end_process=None):
     found_files = sorted([
         f for f in os.listdir(input_path) if f.endswith(AUDIO_EXTENSIONS)
     ])
@@ -237,11 +250,30 @@ def batch_separator(input_path, output_path, model, output_format, *params):
             f"--output_dir={output_path}",
             f"--output_format={output_format}",
             f"--normalization={NORMALIZATION}"
-        ] + list(params)
+        ]
+
+        # Add additional parameters based on model type
+        if "--mdxc_overlap" in model:
+            cmd.append(f"--mdxc_overlap={overlap}")
+            cmd.append(f"--mdxc_segment_size={segment_size}")
+            if denoise:
+                cmd.append("--mdx_enable_denoise")
+        elif "--vr_window_size" in model:
+            cmd.append(f"--vr_window_size={window_size}")
+            cmd.append(f"--vr_aggression={aggression}")
+            if tta:
+                cmd.append("--vr_enable_tta")
+            if high_end_process:
+                cmd.append("--vr_high_end_process")
+        # Add other model-specific parameters as needed
+
         logs.append(f"Processing file: {audio_file}")
-        subprocess.run(cmd, check=True)
-        logs.append(f"File: {audio_file} processed.")
-        yield "\n".join(logs)
+        try:
+            subprocess.run(cmd, check=True)
+            logs.append(f"File: {audio_file} processed.")
+        except subprocess.CalledProcessError as e:
+            logs.append(f"Error processing {audio_file}: {str(e)}")
+    return "\n".join(logs)
 
 def select_themes():
     themes_select = gr.Dropdown(
@@ -263,6 +295,7 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
     gr.Markdown("Try UVR5 UI on Hugging Face with A100 [here](https://huggingface.co/spaces/TheStinger/UVR5_UI)")
     
     with gr.Tabs():
+        # BS/Mel Roformer Tab
         with gr.TabItem("BS/Mel Roformer"):
             with gr.Row():
                 roformer_model = gr.Dropdown(
@@ -314,7 +347,11 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                         "Download!",
                         variant="primary"
                     )
-            roformer_download_button.click(download_audio, [roformer_link], [roformer_audio])
+            roformer_download_button.click(
+                fn=download_audio,
+                inputs=[roformer_link],
+                outputs=[roformer_audio]
+            )
             
             with gr.Accordion("Batch Separation", open=False):
                 with gr.Row():
@@ -337,9 +374,14 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                     )
             roformer_batch_button.click(
                 fn=batch_separator, 
-                inputs=[roformer_input_path, roformer_output_path, 
-                        roformer_model, roformer_output_format, 
-                        f"--mdxc_overlap={roformer_overlap}", f"--mdxc_segment_size={roformer_segment_size}"],
+                inputs=[
+                    roformer_input_path, 
+                    roformer_output_path, 
+                    roformer_model, 
+                    roformer_output_format, 
+                    roformer_overlap, 
+                    roformer_segment_size
+                ],
                 outputs=[roformer_info]
             )
             
@@ -359,11 +401,18 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                     type="filepath"
                 )
             roformer_button.click(
-                roformer_separator, 
-                [roformer_audio, roformer_model, roformer_output_format, roformer_overlap, roformer_segment_size],
-                [roformer_stem1, roformer_stem2]
+                fn=roformer_separator, 
+                inputs=[
+                    roformer_audio, 
+                    roformer_model, 
+                    roformer_output_format, 
+                    roformer_overlap, 
+                    roformer_segment_size
+                ],
+                outputs=[roformer_stem1, roformer_stem2]
             )
         
+        # MDX-NET Tab
         with gr.TabItem("MDX-NET"):
             with gr.Row():
                 mdxnet_model = gr.Dropdown(
@@ -418,7 +467,11 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                         "Download!",
                         variant="primary"
                     )
-            mdxnet_download_button.click(download_audio, [mdxnet_link], [mdxnet_audio])
+            mdxnet_download_button.click(
+                fn=download_audio,
+                inputs=[mdxnet_link],
+                outputs=[mdxnet_audio]
+            )
             
             with gr.Accordion("Batch Separation", open=False):
                 with gr.Row():
@@ -441,10 +494,15 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                     )
             mdxnet_batch_button.click(
                 fn=batch_separator, 
-                inputs=[mdxnet_input_path, mdxnet_output_path, 
-                        mdxnet_model, mdxnet_output_format, 
-                        mdxnet_overlap, mdxnet_segment_size, 
-                        f"--mdx_enable_denoise={mdxnet_denoise}"],
+                inputs=[
+                    mdxnet_input_path, 
+                    mdxnet_output_path, 
+                    mdxnet_model, 
+                    mdxnet_output_format, 
+                    mdxnet_overlap, 
+                    mdxnet_segment_size, 
+                    mdxnet_denoise
+                ],
                 outputs=[mdxnet_info]
             )
             
@@ -464,12 +522,19 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                     type="filepath"
                 )
             mdxnet_button.click(
-                mdxnet_separator, 
-                [mdxnet_audio, mdxnet_model, mdxnet_output_format, 
-                 mdxnet_segment_size, mdxnet_overlap, mdxnet_denoise],
-                [mdxnet_stem1, mdxnet_stem2]
+                fn=mdxnet_separator, 
+                inputs=[
+                    mdxnet_audio, 
+                    mdxnet_model, 
+                    mdxnet_output_format, 
+                    mdxnet_segment_size, 
+                    mdxnet_overlap, 
+                    mdxnet_denoise
+                ],
+                outputs=[mdxnet_stem1, mdxnet_stem2]
             )
         
+        # VR ARCH Tab
         with gr.TabItem("VR ARCH"):
             with gr.Row():
                 vrarch_model = gr.Dropdown(
@@ -530,7 +595,11 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                         "Download!",
                         variant="primary"
                     )
-            vrarch_download_button.click(download_audio, [vrarch_link], [vrarch_audio])
+            vrarch_download_button.click(
+                fn=download_audio,
+                inputs=[vrarch_link],
+                outputs=[vrarch_audio]
+            )
             
             with gr.Accordion("Batch Separation", open=False):
                 with gr.Row():
@@ -553,10 +622,16 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                     )
             vrarch_batch_button.click(
                 fn=batch_separator, 
-                inputs=[vrarch_input_path, vrarch_output_path, 
-                        vrarch_model, vrarch_output_format, 
-                        vrarch_window_size, vrarch_aggression, 
-                        f"--vr_enable_tta={vrarch_tta}", f"--vr_high_end_process={vrarch_high_end_process}"],
+                inputs=[
+                    vrarch_input_path, 
+                    vrarch_output_path, 
+                    vrarch_model, 
+                    vrarch_output_format, 
+                    vrarch_window_size, 
+                    vrarch_aggression, 
+                    vrarch_tta, 
+                    vrarch_high_end_process
+                ],
                 outputs=[vrarch_info]
             )
             
@@ -576,12 +651,20 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                     type="filepath"
                 )
             vrarch_button.click(
-                vrarch_separator, 
-                [vrarch_audio, vrarch_model, vrarch_output_format, 
-                 vrarch_window_size, vrarch_aggression, vrarch_tta, vrarch_high_end_process],
-                [vrarch_stem1, vrarch_stem2]
+                fn=vrarch_separator, 
+                inputs=[
+                    vrarch_audio, 
+                    vrarch_model, 
+                    vrarch_output_format, 
+                    vrarch_window_size, 
+                    vrarch_aggression, 
+                    vrarch_tta, 
+                    vrarch_high_end_process
+                ],
+                outputs=[vrarch_stem1, vrarch_stem2]
             )
         
+        # Demucs Tab
         with gr.TabItem("Demucs"):
             with gr.Row():
                 demucs_model = gr.Dropdown(
@@ -630,7 +713,11 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                         "Download!",
                         variant="primary"
                     )
-            demucs_download_button.click(download_audio, [demucs_link], [demucs_audio])
+            demucs_download_button.click(
+                fn=download_audio,
+                inputs=[demucs_link],
+                outputs=[demucs_audio]
+            )
             
             with gr.Accordion("Batch Separation", open=False):
                 with gr.Row():
@@ -653,9 +740,14 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                     )
             demucs_batch_button.click(
                 fn=batch_separator, 
-                inputs=[demucs_input_path, demucs_output_path, 
-                        demucs_model, demucs_output_format, 
-                        demucs_shifts, demucs_overlap],
+                inputs=[
+                    demucs_input_path, 
+                    demucs_output_path, 
+                    demucs_model, 
+                    demucs_output_format, 
+                    demucs_shifts, 
+                    demucs_overlap
+                ],
                 outputs=[demucs_info]
             )
             
@@ -688,15 +780,22 @@ with gr.Blocks(theme=loadThemes.load_json() or "NoCrypt/miku", title="🎵 UVR5 
                     type="filepath"
                 )
             demucs_button.click(
-                demucs_separator, 
-                [demucs_audio, demucs_model, demucs_output_format, 
-                 demucs_shifts, demucs_overlap],
-                [demucs_stem1, demucs_stem2, demucs_stem3, demucs_stem4]
+                fn=demucs_separator, 
+                inputs=[
+                    demucs_audio, 
+                    demucs_model, 
+                    demucs_output_format, 
+                    demucs_shifts, 
+                    demucs_overlap
+                ],
+                outputs=[demucs_stem1, demucs_stem2, demucs_stem3, demucs_stem4]
             )
         
+        # Themes Tab
         with gr.TabItem("Themes"):
             select_themes()
         
+        # Credits Tab
         with gr.TabItem("Credits"):
             gr.Markdown(
                 """

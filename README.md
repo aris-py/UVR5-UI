@@ -50,7 +50,14 @@ You can also try it in Hugging Faces Spaces running on Zero GPU (A100)!
 
 ### Prerequisites:
 - Git. You can download Git [here](https://git-scm.com/downloads).
-- FFmpeg. You can download FFmpeg [here](https://www.ffmpeg.org/download.html) or you can use my [automated installation script](https://github.com/Eddycrack864/UVR5-UI/blob/main/info/ffmpeg-installer.bat) (for Windows). For linux just run `sudo apt-get install ffmpeg`.
+- FFmpeg. You can download FFmpeg [here](https://www.ffmpeg.org/download.html) or you can use my [automated installation script](https://github.com/Eddycrack864/UVR5-UI/blob/main/info/ffmpeg-installer.bat) (for Windows). For GNU/Linux systems run these commands according to your Linux distribution:
+- 
+  *Ubuntu/Debian*  
+- `sudo apt install ffmpeg`.
+- *Arch Linux* 󰣇
+- `sudo pacman -S ffmpeg`
+- *Fedora* 󰣛
+- `sudo dnf install ffmpeg`
 
 > [!IMPORTANT]  
 > FFmpeg has to be added to the PATH.
@@ -70,7 +77,7 @@ Then continue with the steps described below
 Run the installation script based on your operating system:
 
 - **Windows:** Double-click `UVR5-UI-installer.bat`.
-- **Linux:** Run `UVR5-UI-installer.sh`.
+- **Linux:** Run first on a terminal: `cd UVR5-UI` Then you execute: `chmod +x UVR5-UI-installer.sh` And finally you execute `./UVR5-UI-installer.sh`.
 
 > [!TIP]
 > I personally recommend running the [updater](https://github.com/Eddycrack864/UVR5-UI#3-update-uvr5-ui-if-you-wantneed-it) before installing to make sure you have the latest changes.
@@ -80,14 +87,14 @@ Run the installation script based on your operating system:
 Start UVR5 UI using:
 
 - **Windows:** Double-click `run-UVR5-UI.bat`.
-- **Linux:** Run `run-UVR5-UI.sh`.
+- **Linux:** Run `./run-UVR5-UI.sh`.
 
 ### 3. Update UVR5 UI (If you want/need it)
 
 Update UVR5 UI using (git needed):
 
 - **Windows:** Double-click `UVR5-UI-updater.bat`.
-- **Linux:** Run `UVR5-UI-updater.sh`.
+- **Linux:** Run `./UVR5-UI-updater.sh`.
 
 If you find an error when installing or running the program please consult [this troubleshooting file](https://github.com/Eddycrack864/UVR5-UI/blob/main/info/troubleshooting.md) first, if your error is not described there please create an [issue](https://github.com/Eddycrack864/UVR5-UI/issues)
 
